@@ -50,17 +50,22 @@ describe("renderConversation", () => {
     expect(result).toContain('collection: "My Space"');
   });
 
-  it("renders query as h1 and callout", () => {
-    const entry = makeEntry({ query_str: "Explain closures" });
-    const result = renderConversation(makeConversation([entry]));
-    expect(result).toContain("# Explain closures");
-    expect(result).toContain("[!important]");
+  it("renders the prompt as a labelled callout, not a duplicated heading", () => {
+    const result = renderConversation(makeConversation([makeEntry({ query_str: "Explain closures" })]));
+
+    expect(result).toContain("[!question] Prompt");
+    expect(result).toContain("> Explain closures");
+    // The old renderer emitted the query twice (an h1 *and* a callout), which
+    // read as a bug in the output.
+    expect(result).not.toContain("# Explain closures");
   });
 
   it("renders final answer text", () => {
     const entry = makeEntry({ text: makeFinalAnswerText("Closures capture surrounding scope.") });
     const result = renderConversation(makeConversation([entry]));
     expect(result).toContain("Closures capture surrounding scope.");
+    // Labelled so an answer is distinguishable from the prompt above it.
+    expect(result).toContain("### Answer");
   });
 
   it("renders sources section when web results are present", () => {
@@ -76,7 +81,7 @@ describe("renderConversation", () => {
     const entry = makeEntry({ text: "not json" });
     const result = renderConversation(makeConversation([entry]));
     expect(result).not.toContain("Sources");
-    expect(result).toContain("# What is TypeScript?");
+    expect(result).toContain("What is TypeScript?");
   });
 
   it("inserts separator between multiple entries", () => {
@@ -84,8 +89,8 @@ describe("renderConversation", () => {
     const e2 = makeEntry({ uuid: "entry-2", query_str: "Second", updated_datetime: "2024-01-02T10:00:00Z" });
     const result = renderConversation(makeConversation([e1, e2]));
     expect(result).toContain("* * *");
-    expect(result).toContain("# First");
-    expect(result).toContain("# Second");
+    expect(result).toContain("> First");
+    expect(result).toContain("> Second");
   });
 
   it("uses query_str as title fallback when thread_title is empty", () => {
