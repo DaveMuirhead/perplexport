@@ -12,8 +12,9 @@ import { fetchThreadFiles, FetchFilesResult } from "./fetchAttachments";
 import { exportMemories } from "./exportMemories";
 import { exportBrain } from "./exportBrain";
 import { ContextIndex } from "./linkContext";
+import { ExportManifest, fetchAccount, fetchOrganization, writeManifest } from "./exportManifest";
 import { loadDoneFile, saveDoneFile, writeAtomic, fileExists, sleep } from "./utils";
-import { THREAD_EXPORT_DELAY_MS } from "./config";
+import { THREAD_EXPORT_DELAY_MS, TOOL_VERSION } from "./config";
 
 export interface ExportLibraryOptions {
   outputDir: string;
@@ -205,23 +206,31 @@ export default async function exportLibrary(options: ExportLibraryOptions) {
       );
     }
 
+    const manifestWarnings: string[] = [];
+    let memoriesCount: number | undefined;
+    let brainCount: number | undefined;
+
     // Memories are account-level, not per-thread: fetch once, before the loop.
     // A failure here must not cost the conversation export, so it is contained.
     if (options.memories) {
       try {
-        const count = await exportMemories(page, options.outputDir);
-        console.log(`Saved ${count} memories to _memories.md`);
+        memoriesCount = await exportMemories(page, options.outputDir);
+        console.log(`Saved ${memoriesCount} memories to _memories.md`);
       } catch (err) {
-        console.warn(`Could not export memories: ${(err as Error).message}`);
+        const message = `Could not export memories: ${(err as Error).message}`;
+        console.warn(message);
+        manifestWarnings.push(message);
       }
     }
 
     if (options.brain) {
       try {
-        const count = await exportBrain(page, options.outputDir);
-        console.log(`Saved ${count} Brain items to _brain/`);
+        brainCount = await exportBrain(page, options.outputDir);
+        console.log(`Saved ${brainCount} Brain items to _brain/`);
       } catch (err) {
-        console.warn(`Could not export Brain: ${(err as Error).message}`);
+        const message = `Could not export Brain: ${(err as Error).message}`;
+        console.warn(message);
+        manifestWarnings.push(message);
       }
     }
 
@@ -470,6 +479,38 @@ export default async function exportLibrary(options: ExportLibraryOptions) {
       if (refreshExisting) refreshed++;
       else exported++;
       await sleep(THREAD_EXPORT_DELAY_MS);
+    }
+
+    // Provenance last: counts are only final once the loop has run.
+    try {
+      const manifest: ExportManifest = {
+        exportedAt: new Date().toISOString(),
+        tool: { name: "perplexport", version: TOOL_VERSION },
+        options: {
+          files: options.files === true,
+          memories: options.memories === true,
+          brain: options.brain === true,
+        },
+        account: await fetchAccount(page),
+        organization: await fetchOrganization(page),
+        counts: {
+          conversations: allConversations.length,
+          spaces: spaceMap.size,
+          ...(options.files
+            ? {
+                filesDownloaded: fileTotals.downloaded + fileTotals.skipped,
+                filesMissingUpstream: fileTotals.gone,
+              }
+            : {}),
+          ...(memoriesCount !== undefined ? { memories: memoriesCount } : {}),
+          ...(brainCount !== undefined ? { brainItems: brainCount } : {}),
+        },
+        ...(manifestWarnings.length ? { warnings: manifestWarnings } : {}),
+      };
+      await writeManifest(options.outputDir, manifest);
+      console.log("Wrote _manifest.md");
+    } catch (err) {
+      console.warn(`Could not write manifest: ${(err as Error).message}`);
     }
 
     if (skipped > 0) console.log(`Skipped ${skipped} already-exported.`);

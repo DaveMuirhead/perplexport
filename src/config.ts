@@ -98,3 +98,7 @@ export const BRAIN_QUERY = {
   operationName: "KnowledgeContextKnowledgeRelayQuery",
   sha256Hash: "2884580667156294c2dfab80de32b737ef7bdf1d2c765a1f37e45e0207afcc50",
 };
+
+/** Recorded in the export manifest so a backup says which build produced it.
+ *  Kept in step with package.json's version. */
+export const TOOL_VERSION = "2.1.0";
