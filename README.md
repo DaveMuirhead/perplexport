@@ -99,6 +99,13 @@ each file's kind (`upload` or `generated`), size, sha256 and status. Re-running 
 files already on disk, so it is safe to add to an existing export; `--refetch-files`
 forces a re-download.
 
+Files are discovered from two sources, because neither is complete on its own: each
+thread's `entry-metadata`, and the account-wide asset library behind
+[`/computer/artifacts`](https://www.perplexity.ai/computer/artifacts). On this account
+the library held six generated files that `entry-metadata` never reported. Links that
+are not files — Google Docs/Forms (`EXTERNAL_URL`) and hosted apps (`APP`) — are listed
+there too and are deliberately skipped.
+
 Two caveats, both upstream behaviour rather than tool limitations:
 
 - Perplexity **prunes uploaded files** after a while. For older threads the upload is

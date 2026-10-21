@@ -102,3 +102,31 @@ export const BRAIN_QUERY = {
 /** Recorded in the export manifest so a backup says which build produced it.
  *  Kept in step with package.json's version. */
 export const TOOL_VERSION = "2.1.0";
+
+/** Page size for POST /rest/assets/search. The endpoint rejects anything
+ *  above 40 with a 422, so this is a hard ceiling rather than a preference. */
+export const ASSET_SEARCH_PAGE_SIZE = 40;
+
+/** Safety cap on asset-library pages, mirroring the other paginated walks. */
+export const ASSET_SEARCH_MAX_PAGES = 200;
+
+/** Asset types the library can return. Sent verbatim as the `asset_type`
+ *  filter — the web app passes the full list, and omitting it returns nothing. */
+export const ASSET_SEARCH_TYPES = [
+  "PDF_FILE",
+  "DOCX_FILE",
+  "XLSX_FILE",
+  "RESEARCH_REPORT",
+  "DOC_FILE",
+  "GENERATED_IMAGE",
+  "GENERATED_VIDEO",
+  "APP",
+  "VISUALIZATION",
+  "SLIDES",
+  "AUDIO_FILE",
+  "MODEL_3D",
+  "CHART",
+  "CODE_FILE",
+  "EXTERNAL_URL",
+  "PULL_REQUEST",
+].join(",");

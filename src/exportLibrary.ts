@@ -12,6 +12,7 @@ import { fetchThreadFiles, FetchFilesResult } from "./fetchAttachments";
 import { exportMemories } from "./exportMemories";
 import { exportBrain } from "./exportBrain";
 import { ContextIndex } from "./linkContext";
+import { fetchAssetLibrary, groupByContext, LibraryAsset } from "./assetLibrary";
 import { ExportManifest, fetchAccount, fetchOrganization, writeManifest } from "./exportManifest";
 import { loadDoneFile, saveDoneFile, writeAtomic, fileExists, sleep } from "./utils";
 import { THREAD_EXPORT_DELAY_MS, TOOL_VERSION } from "./config";
@@ -227,6 +228,21 @@ export default async function exportLibrary(
     let memoriesCount: number | undefined;
     let brainCount: number | undefined;
 
+    // The account-wide asset library, fetched once. entry-metadata misses some
+    // assets, so this supplements it; see src/assetLibrary.ts.
+    let assetsByContext = new Map<string, LibraryAsset[]>();
+    if (options.files) {
+      try {
+        const libraryAssets = await fetchAssetLibrary(page);
+        assetsByContext = groupByContext(libraryAssets);
+        console.log(`  ${libraryAssets.length} assets in the account library`);
+      } catch (err) {
+        const message = `Could not read the asset library: ${(err as Error).message}`;
+        console.warn(`  ${message}`);
+        manifestWarnings.push(message);
+      }
+    }
+
     // Memories are account-level, not per-thread: fetch once, before the loop.
     // A failure here must not cost the conversation export, so it is contained.
     if (options.memories) {
@@ -407,6 +423,82 @@ export default async function exportLibrary(
     // Conversation text is the primary artifact; files are a bonus. A file-side
     // failure must never abort the run or stop a thread being marked processed,
     // so everything here is contained and reported rather than thrown.
+    /** Library assets for a thread, read from the already-saved thread JSON so
+     *  the check costs no network call. */
+    const contextAssetsForThread = async (uuid: string): Promise<LibraryAsset[]> => {
+      const dirs = [
+        options.outputDir,
+        ...[...spaceMap.values()].map(
+          ({ space }) => `${options.outputDir}/${sanitizeFolderName(space.title)}`,
+        ),
+      ];
+      for (const dir of dirs) {
+        const jsonPath = `${dir}/${uuid}.json`;
+        try {
+          const saved = JSON.parse(await fs.readFile(jsonPath, "utf-8")) as ConversationResponse;
+          return extraAssetsFor(saved);
+        } catch {
+          /* try the next directory */
+        }
+      }
+      return [];
+    };
+
+    /** True when a saved manifest is missing a file the asset library knows
+     *  about — e.g. the library surfaced assets that entry-metadata never
+     *  reported, after an earlier run already wrote the manifest. */
+    const manifestIsStale = async (uuid: string, expected: LibraryAsset[]): Promise<boolean> => {
+      if (expected.length === 0) return false;
+      try {
+        const manifest = JSON.parse(
+          await fs.readFile(`${filesRoot}/${uuid}/manifest.json`, "utf-8"),
+        ) as { files?: Array<{ filename?: string }> };
+        const have = new Set((manifest.files ?? []).map((f) => f.filename));
+        return expected.some((asset) => !have.has(asset.filename));
+      } catch {
+        return true;
+      }
+    };
+
+    /** Library assets belonging to this thread, matched via its contextUUIDs. */
+    const extraAssetsFor = (threadData: ConversationResponse): LibraryAsset[] => {
+      if (assetsByContext.size === 0) return [];
+      const contexts = new Set<string>();
+      const visit = (node: unknown): void => {
+        if (typeof node === "string") {
+          const trimmed = node.trim();
+          if ((trimmed.startsWith("{") || trimmed.startsWith("[")) && trimmed.length > 2) {
+            try {
+              visit(JSON.parse(trimmed));
+            } catch {
+              /* not JSON */
+            }
+          }
+          return;
+        }
+        if (Array.isArray(node)) {
+          node.forEach(visit);
+          return;
+        }
+        if (node && typeof node === "object") {
+          for (const [key, value] of Object.entries(node)) {
+            if (
+              (key === "context_uuid" || key === "contextUUID" || key === "backend_uuid") &&
+              typeof value === "string"
+            ) {
+              contexts.add(value);
+            }
+            visit(value);
+          }
+        }
+      };
+      visit(threadData.entries);
+
+      const out: LibraryAsset[] = [];
+      for (const context of contexts) out.push(...(assetsByContext.get(context) ?? []));
+      return out;
+    };
+
     const downloadFiles = async (conversation: Conversation, threadData: ConversationResponse) => {
       let result: FetchFilesResult;
       try {
@@ -414,6 +506,7 @@ export default async function exportLibrary(
           page,
           uuid: conversation.uuid,
           conversation: threadData,
+          extraAssets: extraAssetsFor(threadData),
           filesDir: `${filesRoot}/${conversation.uuid}`,
           force: options.refetchFiles,
         });
@@ -453,10 +546,16 @@ export default async function exportLibrary(
         // fetched (e.g. first run with --files over an existing export). The
         // uploaded-file URLs expire in ~10 minutes, so they have to be re-signed
         // by re-reading the thread rather than reused from the saved JSON.
-        if (
+        const manifestPath = `${filesRoot}/${conversation.uuid}/manifest.json`;
+        const needsFiles =
           options.files &&
-          !(await fileExists(`${filesRoot}/${conversation.uuid}/manifest.json`))
-        ) {
+          (!(await fileExists(manifestPath)) ||
+            (await manifestIsStale(
+              conversation.uuid,
+              assetsByContext.size > 0 ? await contextAssetsForThread(conversation.uuid) : [],
+            )));
+
+        if (needsFiles) {
           console.log(`Fetching files: ${conversation.title.substring(0, 60)}`);
           // Re-reading the thread can fail on its own (rate limit, Cloudflare);
           // downloadFiles handles everything past that point.

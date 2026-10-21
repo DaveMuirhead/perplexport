@@ -297,6 +297,9 @@ export interface FetchThreadFilesOptions {
   page: Page;
   uuid: string;
   conversation: ConversationResponse;
+  /** Extra assets for this thread from the account-wide library. entry-metadata
+   *  has an incomplete view, so these fill gaps it does not report. */
+  extraAssets?: DiscoveredFile[];
   /** Directory for this thread's files, e.g. conversations/_files/<uuid>. */
   filesDir: string;
   /** Re-download files that already exist on disk. */
@@ -320,6 +323,19 @@ export async function fetchThreadFiles(
   } catch (err) {
     // An older thread with no agentic assets still has its uploads worth saving.
     console.log(`    asset metadata unavailable: ${(err as Error).message}`);
+  }
+
+  // Merge in library assets entry-metadata did not report. Keyed by asset id so
+  // the entry-metadata copy wins where both have it — its URL was signed for
+  // this run, whereas a library URL may be older.
+  if (options.extraAssets?.length) {
+    const known = new Set(files.map((f) => f.id));
+    for (const asset of options.extraAssets) {
+      if (!known.has(asset.id)) {
+        known.add(asset.id);
+        files.push(asset);
+      }
+    }
   }
 
   const result: FetchFilesResult = { downloaded: 0, failed: 0, gone: 0, skipped: 0 };
