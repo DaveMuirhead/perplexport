@@ -29,12 +29,16 @@ program
   )
   .option("--brain", "Also export the Brain knowledge store (/computer/memory) to _brain/")
   .option(
+    "--allow-incomplete",
+    "Exit 0 even when the export is known to be incomplete (default: exit 2)",
+  )
+  .option(
     "--headful",
     "Run a visible browser (use with xvfb-run on a headless server) — helps pass Cloudflare on 2FA",
   )
   .action(async (opts) => {
     if (opts.backup) await backupIfExists(opts.output);
-    await exportLibrary({
+    const { degradations } = await exportLibrary({
       outputDir: opts.output,
       doneFilePath: opts.doneFile,
       email: opts.email,
@@ -46,6 +50,13 @@ program
       memories: opts.memories,
       brain: opts.brain,
     });
+
+    // Exit non-zero when the export is known to be incomplete, so an unattended
+    // run (cron, CI) fails loudly instead of recording a partial backup as a
+    // success. --allow-incomplete opts out for callers that don't want that.
+    if (degradations.length > 0 && !opts.allowIncomplete) {
+      process.exitCode = 2;
+    }
   });
 
 program.parseAsync().catch((error) => {

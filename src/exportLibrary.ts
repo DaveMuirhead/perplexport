@@ -4,7 +4,7 @@ import { Browser, Page } from "puppeteer";
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import { loadOrLogin } from "./login";
-import { getConversations, Space, Conversation } from "./listConversations";
+import { getConversations, Space, Conversation, Degradation } from "./listConversations";
 import { loadLatestThreadEntry, loadThread } from "./ConversationSaver";
 import { ConversationResponse } from "./types/conversation";
 import renderConversation from "./renderConversation";
@@ -186,7 +186,24 @@ export function isLikelyLoggedOut(fetchedCount: number, previouslyExportedCount:
   return fetchedCount === 0 && previouslyExportedCount > 0;
 }
 
-export default async function exportLibrary(options: ExportLibraryOptions) {
+/** Print a banner that survives a scrollback skim. An unattended run that
+ *  quietly captured a fraction of the account is the failure this guards. */
+function reportDegradations(degradations: Degradation[]): void {
+  if (degradations.length === 0) return;
+  const rule = "=".repeat(72);
+  console.error(`\n${rule}`);
+  console.error("INCOMPLETE EXPORT — this backup does not cover the whole account");
+  console.error(rule);
+  for (const degradation of degradations) {
+    console.error(`\n  [${degradation.kind}] ${degradation.message}`);
+    if (degradation.remedy) console.error(`  Fix: ${degradation.remedy}`);
+  }
+  console.error(`\n${rule}\n`);
+}
+
+export default async function exportLibrary(
+  options: ExportLibraryOptions,
+): Promise<{ degradations: Degradation[] }> {
   puppeteer.use(StealthPlugin());
 
   await fs.mkdir(options.outputDir, { recursive: true });
@@ -197,7 +214,7 @@ export default async function exportLibrary(options: ExportLibraryOptions) {
 
   try {
     const page = await loadOrLogin(browser, options.email, options.cookiesFile, options.otpFifo);
-    const allConversations = await getConversations(page);
+    const { conversations: allConversations, degradations } = await getConversations(page);
 
     if (isLikelyLoggedOut(allConversations.length, doneFile.processedUrls.length)) {
       throw new Error(
@@ -220,6 +237,7 @@ export default async function exportLibrary(options: ExportLibraryOptions) {
         const message = `Could not export memories: ${(err as Error).message}`;
         console.warn(message);
         manifestWarnings.push(message);
+        degradations.push({ kind: "memories-unavailable", message });
       }
     }
 
@@ -231,6 +249,12 @@ export default async function exportLibrary(options: ExportLibraryOptions) {
         const message = `Could not export Brain: ${(err as Error).message}`;
         console.warn(message);
         manifestWarnings.push(message);
+        degradations.push({
+          kind: "brain-unavailable",
+          message,
+          remedy:
+            "If this says the persisted query was not recognised, refresh BRAIN_QUERY in src/config.ts.",
+        });
       }
     }
 
@@ -505,7 +529,9 @@ export default async function exportLibrary(options: ExportLibraryOptions) {
           ...(memoriesCount !== undefined ? { memories: memoriesCount } : {}),
           ...(brainCount !== undefined ? { brainItems: brainCount } : {}),
         },
-        ...(manifestWarnings.length ? { warnings: manifestWarnings } : {}),
+        ...(manifestWarnings.length || degradations.length
+          ? { warnings: [...manifestWarnings, ...degradations.map((d) => d.message)] }
+          : {}),
       };
       await writeManifest(options.outputDir, manifest);
       console.log("Wrote _manifest.md");
@@ -515,12 +541,14 @@ export default async function exportLibrary(options: ExportLibraryOptions) {
 
     if (skipped > 0) console.log(`Skipped ${skipped} already-exported.`);
     console.log(`Done. Exported ${exported} new conversations, refreshed ${refreshed}.`);
+    reportDegradations(degradations);
     if (options.files) {
       console.log(
         `Files: ${fileTotals.downloaded} downloaded, ${fileTotals.skipped} already present, ` +
           `${fileTotals.gone} no longer stored upstream, ${fileTotals.failed} failed.`,
       );
     }
+    return { degradations };
   } finally {
     await browser.close();
   }

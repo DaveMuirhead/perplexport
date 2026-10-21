@@ -17,6 +17,17 @@ export interface Space {
   description?: string;
 }
 
+/** Something that made this run capture less than the account holds.
+ *  Returned rather than only logged, so an unattended caller can act on it. */
+export interface Degradation {
+  /** Short machine-readable tag, e.g. "library-listing-fallback". */
+  kind: string;
+  /** What was lost, in one line. */
+  message: string;
+  /** How to fix it. */
+  remedy?: string;
+}
+
 export interface Conversation {
   uuid: string;
   title: string;
@@ -45,9 +56,15 @@ async function fetchJson<T>(page: Page, path: string): Promise<T> {
   throw new Error(`Rate limited after ${LIST_FETCH_RETRIES} retries: ${path}`);
 }
 
-export async function getConversations(page: Page): Promise<Conversation[]> {
+export interface ConversationListing {
+  conversations: Conversation[];
+  degradations: Degradation[];
+}
+
+export async function getConversations(page: Page): Promise<ConversationListing> {
   const seen = new Set<string>();
   const all: Conversation[] = [];
+  const degradations: Degradation[] = [];
 
   // 1. Main library — every thread, via the paginated GraphQL connection.
   //    list_recent is capped at 20 and ignores every paging parameter, so it is
@@ -69,10 +86,23 @@ export async function getConversations(page: Page): Promise<Conversation[]> {
     const reason = (err as Error).message;
     if (err instanceof PersistedQueryUnavailable) {
       console.warn(`  ${reason}`);
-      console.warn("  Falling back to list_recent — only the 20 most recent threads.");
-      console.warn("  See LIBRARY_FIRST_PAGE_QUERY in src/config.ts for how to refresh.");
+      degradations.push({
+        kind: "library-listing-fallback",
+        message:
+          "The GraphQL library listing is unavailable, so only the 20 most recent " +
+          "threads could be listed. Older conversations were NOT exported.",
+        remedy:
+          "Refresh LIBRARY_FIRST_PAGE_QUERY / LIBRARY_NEXT_PAGE_QUERY in src/config.ts — " +
+          "see the README section 'How the thread list is fetched'.",
+      });
     } else {
       console.warn(`  Library listing failed (${reason}); falling back to list_recent.`);
+      degradations.push({
+        kind: "library-listing-fallback",
+        message:
+          `The GraphQL library listing failed (${reason}), so only the 20 most recent ` +
+          "threads could be listed. Older conversations were NOT exported.",
+      });
     }
 
     const recent = await fetchJson<ThreadListItem[]>(
@@ -167,5 +197,5 @@ export async function getConversations(page: Page): Promise<Conversation[]> {
   }
 
   console.log(`Total unique threads: ${all.length}`);
-  return all;
+  return { conversations: all, degradations };
 }

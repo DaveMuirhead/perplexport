@@ -163,6 +163,7 @@ The emailed code wait times out after 5 minutes; the TOTP wait does not.
 | `--refetch-files` | off | With `--files`, re-download files that already exist on disk |
 | `--memories` | off | Export the account's stored personalization memories |
 | `--brain` | off | Export the Brain knowledge store (`/computer/memory`) |
+| `--allow-incomplete` | off | Exit 0 even when the export is known to be incomplete (default: exit 2) |
 | `-e` | only when cookies are missing or invalid | Perplexity account email |
 | `-o` | `./conversations` | Output directory |
 | `-c` | `session-cookies.json` | Session file |
@@ -216,8 +217,22 @@ will eventually change.** The same is true of the Brain query. When a hash rotat
   See LIBRARY_FIRST_PAGE_QUERY in src/config.ts for how to refresh.
 ```
 
-**If you run this unattended, check the output for those warnings** — a scheduled backup
-would otherwise keep succeeding while quietly capturing only the newest 20 threads.
+**An incomplete export exits with status 2** and prints a banner to stderr, so a cron job
+fails loudly instead of recording a partial backup as a success:
+
+```
+========================================================================
+INCOMPLETE EXPORT — this backup does not cover the whole account
+========================================================================
+
+  [library-listing-fallback] The GraphQL library listing is unavailable, so
+  only the 20 most recent threads could be listed. Older conversations were
+  NOT exported.
+  Fix: Refresh LIBRARY_FIRST_PAGE_QUERY / LIBRARY_NEXT_PAGE_QUERY in src/config.ts
+```
+
+Pass `--allow-incomplete` to exit 0 anyway. The same degradations are recorded under
+Warnings in `_manifest.md`, so a partial backup is identifiable after the fact.
 
 To refresh: open [perplexity.ai/library](https://www.perplexity.ai/library) (or
 `/computer/memory` for Brain), scroll to load a second page, and copy `operationName` and

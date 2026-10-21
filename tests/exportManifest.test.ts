@@ -161,3 +161,17 @@ describe("renderManifest", () => {
     expect(renderManifest(manifest())).not.toContain("## Warnings");
   });
 });
+
+describe("degraded exports", () => {
+  it("records degradations as manifest warnings", () => {
+    const out = renderManifest(
+      manifest({
+        warnings: [
+          "The GraphQL library listing is unavailable, so only the 20 most recent threads could be listed.",
+        ],
+      }),
+    );
+    expect(out).toContain("## Warnings");
+    expect(out).toContain("only the 20 most recent threads");
+  });
+});
