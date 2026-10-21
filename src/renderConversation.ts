@@ -39,14 +39,17 @@ export default function renderConversation(
   entries.forEach((entry, entryIndex) => {
     if (entryIndex > 0) items.push("* * *");
 
-    const queryLines = entry.query_str.split("\n");
-    items.push(`# ${queryLines[0]}`);
-    items.push(`>[!important] ${entry.query_str.split("\n").join("\n> ")}`);
+    // The prompt is a callout rather than a heading + callout repeating the same
+    // text: the duplication read as a bug, and a blockquote is what visually
+    // separates "what was asked" from the answer prose that follows it.
+    items.push(`>[!question] Prompt\n> ${entry.query_str.split("\n").join("\n> ")}`);
 
     const finalAnswer = parseFinalAnswer(entry);
 
     if (finalAnswer?.answer) {
-      items.push(cleanupAnswer(finalAnswer.answer, entryIndex));
+      // Labelled so an answer can't be mistaken for a continuation of the prompt,
+      // which matters most in long multi-turn threads.
+      items.push(`### Answer\n\n${cleanupAnswer(finalAnswer.answer, entryIndex)}`);
     }
 
     if (finalAnswer?.web_results?.length) {
