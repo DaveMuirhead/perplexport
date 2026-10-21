@@ -16,6 +16,9 @@ conversations/
   <uuid>.json
   _memories.md       ← only with --memories
   _memories.json
+  _brain/            ← only with --brain
+    _index.md
+    concepts/, entities/, projects/ … one .md per item
   _files/            ← only with --files
     <uuid>/
       manifest.json  ← what was found, sizes, sha256
@@ -127,6 +130,7 @@ is readable on paper. Attachments under `_files/` are left alone.
 | `--files` | off | Also download each thread's files: uploaded context files and generated results (PDF/XLSX/DOCX/MD/…) |
 | `--refetch-files` | off | With `--files`, re-download files that already exist on disk |
 | `--memories` | off | Also export the account's stored personalization memories |
+| `--brain` | off | Also export the Brain knowledge store (`/computer/memory`) |
 | `--headful` | off | Run a visible browser (use with `xvfb-run`) — needed to pass Cloudflare on the 2FA page |
 | `--otp-fifo <path>` | off | Read the email/TOTP codes from a named pipe instead of prompting |
 
@@ -185,6 +189,7 @@ requests into `LIBRARY_FIRST_PAGE_QUERY` / `LIBRARY_NEXT_PAGE_QUERY` in
 - Main library chats are checked with a lightweight latest-entry request before any full re-export
 - Space chats are checked via remote `last_query_datetime`
 - Crash-safe: each file written atomically; progress saved after every thread
+- **Brain:** `--brain` saves the knowledge store behind `/computer/memory` — the cross-linked notes the assistant keeps about recurring people, projects and concepts — as one Markdown file per item. These are what threads cite as "Perplexity knowledge".
 - **Memories:** `--memories` saves the personalization facts Perplexity stores about the account (the ones shown at `/account/personalize/memories`). Threads cite these as sources with no link, because the content is held only server-side — this is the only way to back them up.
 - **Thread files:** `--files` saves uploaded context files and generated results (PDFs, spreadsheets, documents) to `conversations/_files/<uuid>/`
 - **Not exported:** files attached to a *Space* itself rather than to a thread — that API endpoint has not been discovered yet

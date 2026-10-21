@@ -27,6 +27,7 @@ program
     "--memories",
     "Also export the account's stored personalization memories to _memories.md/.json",
   )
+  .option("--brain", "Also export the Brain knowledge store (/computer/memory) to _brain/")
   .option(
     "--headful",
     "Run a visible browser (use with xvfb-run on a headless server) — helps pass Cloudflare on 2FA",
@@ -43,6 +44,7 @@ program
       files: opts.files,
       refetchFiles: opts.refetchFiles,
       memories: opts.memories,
+      brain: opts.brain,
     });
   });
 

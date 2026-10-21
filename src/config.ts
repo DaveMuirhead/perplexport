@@ -80,3 +80,21 @@ export const LIBRARY_NEXT_PAGE_QUERY = {
 /** Max memories per /rest/memories/list call. The endpoint defaults to 10 but
  *  honours a larger limit, and accounts hold tens of these, not thousands. */
 export const MEMORY_LIST_LIMIT = 1000;
+
+/** Page sizes for the Brain (knowledge context) query. Accounts hold tens of
+ *  items, not thousands, so one request covers it; paging is followed anyway. */
+export const BRAIN_KNOWLEDGE_PAGE_SIZE = 200;
+export const BRAIN_MEMORIES_PAGE_SIZE = 100;
+
+/** Safety cap on Brain pages, mirroring the library walk. */
+export const BRAIN_MAX_PAGES = 50;
+
+/** Persisted query behind /computer/memory ("Brain"). Like the library queries,
+ *  this hash is pinned to a frontend build and will eventually rotate; when it
+ *  does the server answers PersistedQueryNotFound and --brain reports that the
+ *  hash needs refreshing. Capture a new one from the POST
+ *  /rest/perplexity_ask/graphql request that page makes. */
+export const BRAIN_QUERY = {
+  operationName: "KnowledgeContextKnowledgeRelayQuery",
+  sha256Hash: "2884580667156294c2dfab80de32b737ef7bdf1d2c765a1f37e45e0207afcc50",
+};

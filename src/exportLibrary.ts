@@ -10,6 +10,7 @@ import { ConversationResponse } from "./types/conversation";
 import renderConversation from "./renderConversation";
 import { fetchThreadFiles, FetchFilesResult } from "./fetchAttachments";
 import { exportMemories } from "./exportMemories";
+import { exportBrain } from "./exportBrain";
 import { loadDoneFile, saveDoneFile, writeAtomic, fileExists, sleep } from "./utils";
 import { THREAD_EXPORT_DELAY_MS } from "./config";
 
@@ -26,6 +27,8 @@ export interface ExportLibraryOptions {
   refetchFiles?: boolean;
   /** Also export the account's stored personalization memories. */
   memories?: boolean;
+  /** Also export the Brain knowledge store (/computer/memory). */
+  brain?: boolean;
 }
 
 function sanitizeFolderName(name: string): string {
@@ -209,6 +212,15 @@ export default async function exportLibrary(options: ExportLibraryOptions) {
         console.log(`Saved ${count} memories to _memories.md`);
       } catch (err) {
         console.warn(`Could not export memories: ${(err as Error).message}`);
+      }
+    }
+
+    if (options.brain) {
+      try {
+        const count = await exportBrain(page, options.outputDir);
+        console.log(`Saved ${count} Brain items to _brain/`);
+      } catch (err) {
+        console.warn(`Could not export Brain: ${(err as Error).message}`);
       }
     }
 
