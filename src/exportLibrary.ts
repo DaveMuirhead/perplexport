@@ -202,6 +202,35 @@ function reportDegradations(degradations: Degradation[]): void {
   console.error(`\n${rule}\n`);
 }
 
+/** Count what the archive actually holds, by reading every thread manifest.
+ *  The per-run tallies only cover threads this run touched, so on an
+ *  incremental sync they would under-report a backup that is in fact complete. */
+async function countStoredFiles(
+  filesRoot: string,
+): Promise<{ filesDownloaded: number; filesMissingUpstream: number }> {
+  let filesDownloaded = 0;
+  let filesMissingUpstream = 0;
+  try {
+    for (const entry of await fs.readdir(filesRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      try {
+        const manifest = JSON.parse(
+          await fs.readFile(`${filesRoot}/${entry.name}/manifest.json`, "utf-8"),
+        ) as { files?: Array<{ status?: string }> };
+        for (const file of manifest.files ?? []) {
+          if (file.status === "ok") filesDownloaded++;
+          else if (file.status === "gone") filesMissingUpstream++;
+        }
+      } catch {
+        /* a thread without a readable manifest contributes nothing */
+      }
+    }
+  } catch {
+    /* no _files directory yet */
+  }
+  return { filesDownloaded, filesMissingUpstream };
+}
+
 export default async function exportLibrary(
   options: ExportLibraryOptions,
 ): Promise<{ degradations: Degradation[] }> {
@@ -619,12 +648,7 @@ export default async function exportLibrary(
         counts: {
           conversations: allConversations.length,
           spaces: spaceMap.size,
-          ...(options.files
-            ? {
-                filesDownloaded: fileTotals.downloaded + fileTotals.skipped,
-                filesMissingUpstream: fileTotals.gone,
-              }
-            : {}),
+          ...(options.files ? await countStoredFiles(filesRoot) : {}),
           ...(memoriesCount !== undefined ? { memories: memoriesCount } : {}),
           ...(brainCount !== undefined ? { brainItems: brainCount } : {}),
         },
