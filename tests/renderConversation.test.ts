@@ -77,6 +77,25 @@ describe("renderConversation", () => {
     expect(result).toContain("Web docs");
   });
 
+  it("labels sources that have no URL instead of printing empty parens", () => {
+    // Perplexity cites its own stored context (memory, knowledge notes, earlier
+    // sessions); those carry no url, and "name ()" read as a broken link.
+    const webResults = [
+      { name: "Projects · Role-reassessment", meta_data: { artifact_kind: "knowledge" } },
+      { name: "A memory", meta_data: { artifact_kind: "memory" } },
+      { name: "Earlier chat", meta_data: { artifact_kind: "past_session" } },
+      { name: "Unknown kind" },
+    ];
+    const entry = makeEntry({ text: makeFinalAnswerText("Answer", webResults as never) });
+    const result = renderConversation(makeConversation([entry]));
+
+    expect(result).not.toContain("()");
+    expect(result).toContain("Projects · Role-reassessment (Perplexity knowledge)");
+    expect(result).toContain("A memory (Perplexity memory)");
+    expect(result).toContain("Earlier chat (earlier session)");
+    expect(result).toContain("Unknown kind (no link)");
+  });
+
   it("silently omits answer section when entry.text is not parseable JSON", () => {
     const entry = makeEntry({ text: "not json" });
     const result = renderConversation(makeConversation([entry]));

@@ -72,13 +72,35 @@ function renderSources(webResults: WebResult[], entryIndex: number): string {
     const citation = index + 1;
     if (result.url?.startsWith("http")) {
       text += `- [${result.name}](${result.url}) ${hostLabel(result.url)}`;
+    } else if (result.url) {
+      text += `- ${result.name} (${result.url})`;
     } else {
-      text += `- ${result.name} (${result.url ?? ""})`;
+      // Not every cited source is a web page. Perplexity also cites its own
+      // stored context — memory, knowledge notes, earlier sessions — and those
+      // carry no URL at all. Naming the kind beats printing an empty "()",
+      // which reads as a file that failed to download.
+      text += `- ${result.name}${sourceKindLabel(result)}`;
     }
     if (result.snippet) text += `\n    ${result.snippet}`;
     text += ` ^${entryIndex + 1}-${citation}\n`;
   });
   return text;
+}
+
+/** Describe a URL-less source, e.g. " (Perplexity memory)". */
+function sourceKindLabel(result: WebResult): string {
+  const kind = (result.meta_data as { artifact_kind?: unknown } | undefined)?.artifact_kind;
+  const label =
+    kind === "memory"
+      ? "Perplexity memory"
+      : kind === "knowledge"
+        ? "Perplexity knowledge"
+        : kind === "past_session"
+          ? "earlier session"
+          : typeof kind === "string" && kind
+            ? kind.replace(/_/g, " ")
+            : "no link";
+  return ` (${label})`;
 }
 
 function hostLabel(url: string): string {
