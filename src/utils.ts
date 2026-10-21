@@ -23,6 +23,17 @@ export async function saveDoneFile(doneFile: DoneFile, doneFilePath: string): Pr
 }
 
 export async function writeAtomic(filePath: string, content: string): Promise<void> {
+  // Skip the write when nothing changed, so an unchanged file keeps its mtime.
+  // Downstream tooling keys off mtime — `npm run pdf` rebuilds a PDF whose .md
+  // looks newer — and rewriting identical content on every sync made files that
+  // are regenerated unconditionally (memories, Brain, the manifest) appear to
+  // change on every run.
+  try {
+    if ((await fs.readFile(filePath, "utf-8")) === content) return;
+  } catch {
+    // Missing or unreadable: fall through and write it.
+  }
+
   const tmp = filePath + ".tmp";
   await fs.writeFile(tmp, content, "utf-8");
   await fs.rename(tmp, filePath);
