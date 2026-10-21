@@ -76,3 +76,7 @@ export const LIBRARY_NEXT_PAGE_QUERY = {
   operationName: "LibraryRecentItemsPaginationQuery",
   sha256Hash: "0306e8d9669f65a32f496ef70581533c6b5e327aef16b953004b9935f7d22c43",
 };
+
+/** Max memories per /rest/memories/list call. The endpoint defaults to 10 but
+ *  honours a larger limit, and accounts hold tens of these, not thousands. */
+export const MEMORY_LIST_LIMIT = 1000;

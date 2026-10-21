@@ -24,6 +24,10 @@ program
   )
   .option("--refetch-files", "With --files, re-download files that already exist on disk")
   .option(
+    "--memories",
+    "Also export the account's stored personalization memories to _memories.md/.json",
+  )
+  .option(
     "--headful",
     "Run a visible browser (use with xvfb-run on a headless server) — helps pass Cloudflare on 2FA",
   )
@@ -38,6 +42,7 @@ program
       headful: opts.headful,
       files: opts.files,
       refetchFiles: opts.refetchFiles,
+      memories: opts.memories,
     });
   });
 

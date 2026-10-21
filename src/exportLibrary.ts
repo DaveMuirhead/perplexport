@@ -9,6 +9,7 @@ import { loadLatestThreadEntry, loadThread } from "./ConversationSaver";
 import { ConversationResponse } from "./types/conversation";
 import renderConversation from "./renderConversation";
 import { fetchThreadFiles, FetchFilesResult } from "./fetchAttachments";
+import { exportMemories } from "./exportMemories";
 import { loadDoneFile, saveDoneFile, writeAtomic, fileExists, sleep } from "./utils";
 import { THREAD_EXPORT_DELAY_MS } from "./config";
 
@@ -23,6 +24,8 @@ export interface ExportLibraryOptions {
   files?: boolean;
   /** Re-download files that already exist on disk. */
   refetchFiles?: boolean;
+  /** Also export the account's stored personalization memories. */
+  memories?: boolean;
 }
 
 function sanitizeFolderName(name: string): string {
@@ -196,6 +199,17 @@ export default async function exportLibrary(options: ExportLibraryOptions) {
         `Fetched 0 conversations but ${doneFile.processedUrls.length} were previously exported — ` +
           "the saved session is almost certainly expired. Re-run with -e, --email <email> to refresh it.",
       );
+    }
+
+    // Memories are account-level, not per-thread: fetch once, before the loop.
+    // A failure here must not cost the conversation export, so it is contained.
+    if (options.memories) {
+      try {
+        const count = await exportMemories(page, options.outputDir);
+        console.log(`Saved ${count} memories to _memories.md`);
+      } catch (err) {
+        console.warn(`Could not export memories: ${(err as Error).message}`);
+      }
     }
 
     // Build space index and write _space.md files upfront with full thread lists
