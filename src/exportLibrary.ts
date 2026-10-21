@@ -11,6 +11,7 @@ import renderConversation from "./renderConversation";
 import { fetchThreadFiles, FetchFilesResult } from "./fetchAttachments";
 import { exportMemories } from "./exportMemories";
 import { exportBrain } from "./exportBrain";
+import { ContextIndex } from "./linkContext";
 import { loadDoneFile, saveDoneFile, writeAtomic, fileExists, sleep } from "./utils";
 import { THREAD_EXPORT_DELAY_MS } from "./config";
 
@@ -224,6 +225,99 @@ export default async function exportLibrary(options: ExportLibraryOptions) {
       }
     }
 
+    // Index of exported context, so citations in a thread can link to the local
+    // copies instead of naming a destination the reader can't reach. Only what
+    // actually landed on disk goes in here — see linkContext.ts.
+    const contextIndex: ContextIndex = {};
+    try {
+      const brainJson = `${options.outputDir}/_brain/_brain.json`;
+      if (await fileExists(brainJson)) {
+        const items = JSON.parse(await fs.readFile(brainJson, "utf-8")) as Array<{
+          itemId?: string;
+        }>;
+        contextIndex.brainItems = new Set(
+          items.map((i) => i.itemId).filter((v): v is string => typeof v === "string"),
+        );
+      }
+      const memoriesJson = `${options.outputDir}/_memories.json`;
+      if (await fileExists(memoriesJson)) {
+        const memories = JSON.parse(await fs.readFile(memoriesJson, "utf-8")) as Array<{
+          memory_key?: string;
+          display_value?: string;
+        }>;
+        contextIndex.memories = new Map(
+          memories
+            .filter(
+              (m): m is { memory_key: string; display_value: string } =>
+                typeof m.memory_key === "string" && typeof m.display_value === "string",
+            )
+            .map((m) => [m.memory_key, m.display_value]),
+        );
+      }
+    } catch (err) {
+      console.warn(`Could not index exported context: ${(err as Error).message}`);
+    }
+
+    // Earlier-session citations use a contextUUID, not the thread uuid, so the
+    // mapping is harvested from each thread as it is written.
+    contextIndex.threadByContextUuid = new Map<string, string>();
+
+    /** Filenames the exporter actually downloaded for a thread (status "ok").
+     *  Cited uploads that Perplexity has pruned are recorded as "gone", and
+     *  linking those would produce a dead link. */
+    const localFilesFor = async (uuid: string): Promise<Set<string>> => {
+      const manifestPath = `${filesRoot}/${uuid}/manifest.json`;
+      try {
+        const manifest = JSON.parse(await fs.readFile(manifestPath, "utf-8")) as {
+          files?: Array<{ filename?: string; status?: string }>;
+        };
+        return new Set(
+          (manifest.files ?? [])
+            .filter((f) => f.status === "ok" && typeof f.filename === "string")
+            .map((f) => f.filename as string),
+        );
+      } catch {
+        return new Set();
+      }
+    };
+
+    /** contextUUIDs appearing in a thread, so later threads can link back. */
+    const harvestContextUuids = (threadData: ConversationResponse, uuid: string) => {
+      const seenHere = new Set<string>();
+      const visit = (node: unknown): void => {
+        if (typeof node === "string") {
+          const trimmed = node.trim();
+          if ((trimmed.startsWith("{") || trimmed.startsWith("[")) && trimmed.length > 2) {
+            try {
+              visit(JSON.parse(trimmed));
+            } catch {
+              /* not JSON */
+            }
+          }
+          return;
+        }
+        if (Array.isArray(node)) {
+          node.forEach(visit);
+          return;
+        }
+        if (node && typeof node === "object") {
+          for (const [key, value] of Object.entries(node)) {
+            if (
+              (key === "context_uuid" || key === "contextUUID" || key === "backend_uuid") &&
+              typeof value === "string"
+            ) {
+              seenHere.add(value);
+            }
+            visit(value);
+          }
+        }
+      };
+      visit(threadData.entries);
+      for (const contextUuid of seenHere) {
+        contextIndex.threadByContextUuid!.set(contextUuid, uuid);
+      }
+    };
+
     // Build space index and write _space.md files upfront with full thread lists
     const spaceMap = new Map<string, { space: Space; threads: Conversation[] }>();
     for (const c of allConversations) {
@@ -351,8 +445,19 @@ export default async function exportLibrary(options: ExportLibraryOptions) {
 
       const { conversation: threadData } = await loadThread(page, conversation.uuid);
 
+      harvestContextUuids(threadData, conversation.uuid);
+
       await writeAtomic(jsonPath, JSON.stringify(threadData, null, 2));
-      await writeAtomic(mdPath, renderConversation(threadData, conversation.space?.title));
+      await writeAtomic(
+        mdPath,
+        renderConversation(threadData, conversation.space?.title, {
+          ...contextIndex,
+          threadUuid: conversation.uuid,
+          localFiles: await localFilesFor(conversation.uuid),
+          // Space threads sit one directory deeper than _files/_brain/_memories.
+          pathToRoot: conversation.space ? "../" : "",
+        }),
+      );
 
       if (options.files) await downloadFiles(conversation, threadData);
 
