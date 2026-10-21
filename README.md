@@ -130,8 +130,40 @@ Perplexity's REST API sits behind **Cloudflare bot management**, and a valid ses
 
 So every `/rest/` call is issued from inside the Puppeteer page (`page.evaluate(() => fetch(...))`). The browser is the Cloudflare-passing client, not an HTML renderer — the data itself is plain JSON. That's why a browser is needed on **every** run, not only at login. Going browserless would require a TLS-impersonating HTTP client (e.g. curl-impersonate) to spoof the JA3 fingerprint — an arms race against Cloudflare that isn't worth it for a backup tool.
 
+## How the thread list is fetched (and when it can break)
+
+`/rest/thread/list_recent` is **hard-capped at 20 threads** and ignores `limit`,
+`offset`, `cursor`, `page` and `before` — so it cannot enumerate a library of any size.
+The full list comes from the same GraphQL endpoint the Library page uses, which pages
+properly.
+
+That endpoint takes *persisted* queries: the query text lives server-side and the
+client references it by `sha256Hash`. **Those hashes are tied to a Perplexity frontend
+build and will eventually change.** When that happens:
+
+- the export does **not** fail — it falls back to `list_recent`
+- but the fallback only sees the **20 most recent threads**, so the export becomes
+  incomplete
+- three warnings are printed, naming the constant to update
+
+```
+  LibraryItemsRelayQuery: persisted query not recognised by the server (hash needs refreshing)
+  Falling back to list_recent — only the 20 most recent threads.
+  See LIBRARY_FIRST_PAGE_QUERY in src/config.ts for how to refresh.
+```
+
+**If you run this unattended, check the output for those warnings** — a scheduled backup
+would otherwise keep succeeding while quietly capturing only the newest 20 threads.
+
+To refresh the hashes: open [perplexity.ai/library](https://www.perplexity.ai/library),
+scroll down far enough to load a second page, and in devtools copy `operationName` and
+`extensions.persistedQuery.sha256Hash` from the `POST /rest/perplexity_ask/graphql`
+requests into `LIBRARY_FIRST_PAGE_QUERY` / `LIBRARY_NEXT_PAGE_QUERY` in
+[src/config.ts](src/config.ts). There are two: the first page and the pagination query.
+
 ## Notes
 
+- Full library listing via GraphQL — `list_recent` only returns 20 threads (see above)
 - Incremental sync: re-running skips unchanged threads, picks up new ones, and refreshes changed ones
 - Main library chats are checked with a lightweight latest-entry request before any full re-export
 - Space chats are checked via remote `last_query_datetime`

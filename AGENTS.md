@@ -63,3 +63,34 @@ Non-obvious details worth knowing before changing `src/fetchAttachments.ts`:
 Space-level files (documents attached to a Space rather than a thread) are still not
 exported — `list_collection_files` and similar guesses all 404, and no test account
 with `file_count > 0` was available to probe.
+
+## Library enumeration
+
+`/rest/thread/list_recent` is **hard-capped at 20 threads** and silently ignores
+`limit`, `offset`, `cursor`, `page` and `before`. Don't try to page it — it can't be.
+
+The full library comes from the GraphQL endpoint the Library page uses
+(`src/listLibrary.ts`), via `POST /rest/perplexity_ask/graphql` with *persisted*
+queries. Two operations are needed, and they are not interchangeable:
+
+| Page | operationName | Paging variables |
+|------|---------------|------------------|
+| first | `LibraryItemsRelayQuery` | none (filters only) |
+| rest | `LibraryRecentItemsPaginationQuery` | `count`, `cursor` |
+
+Sending `after`/`cursor` to the *first-page* operation returns HTTP 200 but the
+variable is dropped, so the same 25 rows come back on every request — an easy way to
+conclude an account has thousands of threads when it has 55. Always switch operations
+after page one, and treat "a page added nothing new" as the end of the walk.
+
+The real thread UUID is `node.object.slug`. `node.object.id` is an opaque Relay id
+(`TH:…`) and `contextUUID` is a different identifier; neither works against
+`/rest/thread/<uuid>`. `node.object.mode === "COMPUTER"` means the thread lives at
+`/computer/tasks/<uuid>` rather than `/search/<uuid>`.
+
+The `sha256Hash` values are pinned to a frontend build and will eventually rotate. When
+they do the server returns `PersistedQueryNotFound`, and `getConversations` logs a
+warning and falls back to the 20-thread REST endpoint rather than failing the run. To
+refresh them, open the Library, scroll to trigger a second page, and copy
+`operationName` + `extensions.persistedQuery.sha256Hash` from the GraphQL requests into
+`src/config.ts`.
