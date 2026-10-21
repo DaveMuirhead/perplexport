@@ -99,6 +99,20 @@ echo 123456 > /tmp/otp
 
 The emailed code wait times out after 5 minutes; the TOTP wait does not (the authenticator code refreshes every ~30s).
 
+### PDFs
+
+`scripts/md-to-pdf.mjs` renders each exported conversation to a `.pdf` beside its
+`.md`, using the Puppeteer Chrome this project already requires (no pandoc or LaTeX):
+
+```bash
+npm run pdf                  # incremental — only new or changed conversations
+npm run pdf -- --force       # rebuild every PDF
+npm run pdf -- --only <uuid> # a single conversation
+```
+
+Prompts render as labelled callouts and answers as plain prose, so a multi-turn thread
+is readable on paper. Attachments under `_files/` are left alone.
+
 ## Options
 
 | Flag | Default | Description |
