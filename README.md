@@ -14,6 +14,10 @@ conversations/
     <uuid>.json
   <uuid>.md          ← library threads (no space)
   <uuid>.json
+  _files/            ← only with --files
+    <uuid>/
+      manifest.json  ← what was found, sizes, sha256
+      Report.pdf     ← generated results + uploaded context files
 done.json            ← progress log; safe to resume after interruption
 ```
 
@@ -50,6 +54,28 @@ node dist/cli.js -e your@email.com
 
 Enter the 6-digit code sent to your email (**valid ~5 minutes** — request a new run if it expires). The session is saved to `session-cookies.json` and lasts ~30 days; during that time the routine sync above works without `-e`.
 
+### Downloading thread files
+
+Threads often carry files: documents you uploaded as context, and files the assistant
+generated (PDFs, spreadsheets, Word docs). `--files` saves both:
+
+```bash
+node dist/cli.js --files
+```
+
+Files land in `conversations/_files/<thread-uuid>/`, alongside a `manifest.json`
+recording each file's kind (`upload` or `generated`), size, sha256, and status.
+Re-running skips files already on disk, so this is safe to add to an existing export;
+`--refetch-files` forces a re-download.
+
+Two caveats, both upstream behaviour rather than tool limitations:
+
+- Perplexity **prunes uploaded files** after a while. For older threads the upload is
+  gone server-side and is recorded as `gone` in the manifest. Generated results are
+  retained and still download fine.
+- A file downloads only if it is still reachable at export time, so a thread's
+  attachments are best captured by syncing regularly rather than years later.
+
 ### Two-factor accounts (TOTP)
 
 If your account has an authenticator-app second factor, the login flow asks for the TOTP code after the email code. The 2FA page is protected by **Cloudflare Turnstile, which blocks headless Chrome** — so on a server you must run the login **headful under a virtual display**:
@@ -82,6 +108,8 @@ The emailed code wait times out after 5 minutes; the TOTP wait does not (the aut
 | `-c` | `session-cookies.json` | Session file |
 | `-d` | `done.json` | Progress file |
 | `--backup` | off | Rename existing output dir to `.backup` before running |
+| `--files` | off | Also download each thread's files: uploaded context files and generated results (PDF/XLSX/DOCX/MD/…) |
+| `--refetch-files` | off | With `--files`, re-download files that already exist on disk |
 | `--headful` | off | Run a visible browser (use with `xvfb-run`) — needed to pass Cloudflare on the 2FA page |
 | `--otp-fifo <path>` | off | Read the email/TOTP codes from a named pipe instead of prompting |
 
@@ -108,7 +136,9 @@ So every `/rest/` call is issued from inside the Puppeteer page (`page.evaluate(
 - Main library chats are checked with a lightweight latest-entry request before any full re-export
 - Space chats are checked via remote `last_query_datetime`
 - Crash-safe: each file written atomically; progress saved after every thread
-- **Not exported:** uploaded files and images attached to Spaces — the API endpoint for Space files has not been discovered yet
+- **Thread files:** `--files` saves uploaded context files and generated results (PDFs, spreadsheets, documents) to `conversations/_files/<uuid>/`
+- **Not exported:** files attached to a *Space* itself rather than to a thread — that API endpoint has not been discovered yet
+- Perplexity prunes uploaded files after a while; for older threads these are gone upstream and recorded as `gone` in the manifest (generated results keep working)
 - If Chrome doesn't launch: `npx puppeteer browsers install chrome`
 
 ---

@@ -28,3 +28,17 @@ export const LIST_LIMIT = 1000;
 
 /** Max entries per thread page (server-side limit is 100). */
 export const THREAD_PAGE_SIZE = 100;
+
+/** How many files to download concurrently per thread.
+ *  Kept low: the CDN is fine with it, but uploads carry a 10-minute
+ *  pre-signed URL, so finishing a thread quickly matters more than raw speed. */
+export const FILE_DOWNLOAD_CONCURRENCY = 4;
+
+/** How many times to retry a single file download before giving up. */
+export const FILE_DOWNLOAD_RETRIES = 3;
+
+/** Base wait between file download retries (ms); multiplied by the attempt number. */
+export const FILE_RETRY_BACKOFF_MS = 1000;
+
+/** Give up on one file after this long (ms). Guards against a hung CDN connection. */
+export const FILE_DOWNLOAD_TIMEOUT_MS = 120000;
