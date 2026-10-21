@@ -52,13 +52,17 @@ export async function getConversations(page: Page): Promise<Conversation[]> {
   // 1. Main library — every thread, via the paginated GraphQL connection.
   //    list_recent is capped at 20 and ignores every paging parameter, so it is
   //    only a fallback for when the persisted-query hashes rotate.
+  //
+  //    The library connection also returns threads that live in a Space, so these
+  //    are collected but not claimed until after the Space pass below — otherwise
+  //    whichever pass ran first would win and a Space thread would be filed at the
+  //    output root with no `space`, losing its folder and its _space.md entry.
+  const deferredLibraryThreads: Conversation[] = [];
   console.log("Fetching main library...");
   try {
     const libraryThreads = await listLibraryThreads(page);
     libraryThreads.forEach((t) => {
-      if (seen.has(t.uuid)) return;
-      seen.add(t.uuid);
-      all.push({ uuid: t.uuid, title: t.title, url: threadUrl(t) });
+      deferredLibraryThreads.push({ uuid: t.uuid, title: t.title, url: threadUrl(t) });
     });
     console.log(`  ${libraryThreads.length} threads in library`);
   } catch (err) {
@@ -76,9 +80,7 @@ export async function getConversations(page: Page): Promise<Conversation[]> {
       `/rest/thread/list_recent?limit=${LIST_LIMIT}`,
     );
     recent.forEach((t) => {
-      if (seen.has(t.uuid)) return;
-      seen.add(t.uuid);
-      all.push({
+      deferredLibraryThreads.push({
         uuid: t.uuid,
         title: t.title ?? t.uuid,
         url: `https://www.perplexity.ai${t.link ?? `/search/${t.uuid}`}`,
@@ -155,6 +157,13 @@ export async function getConversations(page: Page): Promise<Conversation[]> {
     // some endpoint exists. Note this is only about Space-level files: files
     // belonging to a thread are handled by src/fetchAttachments.ts (--files).
     // The Space object already carries the uuid/slug such a call would need.
+  }
+
+  // Anything the Space pass didn't claim is a plain library thread.
+  for (const conversation of deferredLibraryThreads) {
+    if (seen.has(conversation.uuid)) continue;
+    seen.add(conversation.uuid);
+    all.push(conversation);
   }
 
   console.log(`Total unique threads: ${all.length}`);
