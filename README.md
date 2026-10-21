@@ -17,6 +17,7 @@ for scheduled backups, not just a one-off export.
 | Memories | `--memories` | The personalization facts at `/account/personalize/memories` |
 | Brain | `--brain` | The knowledge store at `/computer/memory` — cross-linked notes about recurring people, projects and concepts |
 | PDFs | `npm run pdf` | A `.pdf` beside each conversation |
+| Manifest | *(always)* | `_manifest.md` — when the export ran, which account and organization, which flags, and how much was captured |
 
 Citations inside a thread are resolved against whatever you exported: a cited Brain note
 links to its local file, a cited memory is quoted inline, an earlier session links to
@@ -27,6 +28,8 @@ exported keeps a plain label rather than becoming a broken link.
 
 ```
 conversations/
+  _manifest.md         ← when the export ran, which account, what it covered
+  _manifest.json
   <uuid>.md            ← conversation, prompts and answers labelled
   <uuid>.json          ← raw thread data
   <uuid>.pdf           ← only with npm run pdf
@@ -115,6 +118,48 @@ These are two separate stores, and neither is part of any conversation:
 Threads cite both as sources with no link, because the content is held only server-side —
 the assistant reads it inside its own sandbox and that output is stripped from exported
 transcripts. Exporting them is the only way to resolve those citations.
+
+### The manifest
+
+Every run writes `_manifest.md` (and `_manifest.json`) to the output directory, so a
+backup says what it is rather than being an unattributable folder of UUIDs:
+
+```markdown
+# Perplexity export
+
+Exported **2026-10-21T02:42:40.097Z** by perplexport v2.1.0.
+
+## Account
+- **Username:** dave
+- **Subscription:** pro
+- **Org role:** ADMIN
+
+## Organization
+- **Name:** Acme
+- **Created:** 2026-08-06
+- **Thread retention:** unlimited
+
+## Contents
+- **Conversations:** 55
+- **Spaces:** 1
+- **Files downloaded:** 143
+- **Files no longer stored upstream:** 88
+- **Memories:** 21
+- **Brain items:** 10
+
+## Options
+`--files`, `--memories`, `--brain`
+```
+
+(Email and the account/organization UUIDs are recorded too; they are elided here.)
+
+Two fields are there to explain *gaps* rather than to describe the account:
+
+- **Thread retention** — where an org admin has set one, older threads are deleted
+  server-side. Recording it means a short history reads as policy rather than as a
+  tool failure.
+- **Warnings** — anything the run could not capture is listed, so a partial export is
+  distinguishable from a complete one long after the logs have scrolled away.
 
 ### PDFs
 
